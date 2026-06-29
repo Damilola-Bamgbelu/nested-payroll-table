@@ -5,7 +5,10 @@ import {
   useReactTable, getCoreRowModel, getSortedRowModel, getExpandedRowModel,
   type ColumnDef, type SortingState, type ExpandedState, flexRender, type Row,
 } from "@tanstack/react-table";
-import { ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+} from "lucide-react";
 import type { Country, Branch, Team, Employee, PayStatus } from "./types";
 import { StatusBadge } from "./status-badge";
 import { Checkbox } from "./checkbox";
@@ -204,6 +207,7 @@ export function PayrollTable({
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
+  const [gotoVal, setGotoVal] = useState("");
 
   const allRows = useMemo(() => build(countries), [countries]);
   const filtered = useMemo(() => filterRows(allRows, search), [allRows, search]);
@@ -370,53 +374,106 @@ export function PayrollTable({
         </tbody>
       </table>
 
-      {/* ── Pagination (shadcn-styled, dependency-free) ── */}
+      {/* ── Pagination ── left: page count · center: pager · right: go-to ── */}
       {paginate && filtered.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-3" style={{ ...INTER, borderTop: "1px solid #f2f4f7" }}>
-          <span className="text-[13px]" style={{ color: "#98a2b3" }}>
-            {safePage * pageSize + 1}–{Math.min(filtered.length, (safePage + 1) * pageSize)} of {filtered.length}
+        <div className="flex items-center justify-between gap-4 px-4 py-3" style={{ ...INTER, borderTop: "1px solid #f2f4f7" }}>
+          {/* Left — page count */}
+          <span className="text-[13px] whitespace-nowrap" style={{ color: "#525866" }}>
+            Page {safePage + 1} of {pageCount}
           </span>
+
+          {/* Center — first / prev / numbers / next / last */}
           <nav className="flex items-center gap-1" aria-label="pagination">
-            <PageBtn disabled={safePage === 0} onClick={() => goToPage(safePage - 1)} aria-label="Previous page">
+            <ChevBtn disabled={safePage === 0} onClick={() => goToPage(0)} aria-label="First page">
+              <ChevronsLeft size={15} />
+            </ChevBtn>
+            <ChevBtn disabled={safePage === 0} onClick={() => goToPage(safePage - 1)} aria-label="Previous page">
               <ChevronLeft size={15} />
-            </PageBtn>
+            </ChevBtn>
             {pageList(safePage, pageCount).map((p, i) =>
               p === "…" ? (
-                <span key={`e${i}`} className="px-1 text-[13px]" style={{ color: "#cacfd8" }}>…</span>
+                <span key={`e${i}`} className="flex h-8 w-8 items-center justify-center text-[13px]" style={{ color: "#cacfd8" }}>…</span>
               ) : (
-                <PageBtn key={p} active={p === safePage} onClick={() => goToPage(p)} aria-current={p === safePage ? "page" : undefined}>
+                <NumBtn key={p} active={p === safePage} onClick={() => goToPage(p)} aria-current={p === safePage ? "page" : undefined}>
                   {p + 1}
-                </PageBtn>
+                </NumBtn>
               ),
             )}
-            <PageBtn disabled={safePage >= pageCount - 1} onClick={() => goToPage(safePage + 1)} aria-label="Next page">
+            <ChevBtn disabled={safePage >= pageCount - 1} onClick={() => goToPage(safePage + 1)} aria-label="Next page">
               <ChevronRight size={15} />
-            </PageBtn>
+            </ChevBtn>
+            <ChevBtn disabled={safePage >= pageCount - 1} onClick={() => goToPage(pageCount - 1)} aria-label="Last page">
+              <ChevronsRight size={15} />
+            </ChevBtn>
           </nav>
+
+          {/* Right — go to page */}
+          <form
+            className="flex items-center gap-2 whitespace-nowrap"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = parseInt(gotoVal, 10);
+              if (!Number.isNaN(n)) goToPage(n - 1);
+              setGotoVal("");
+            }}
+          >
+            <span className="text-[13px]" style={{ color: "#525866" }}>Go to page</span>
+            <input
+              type="number"
+              min={1}
+              max={pageCount}
+              value={gotoVal}
+              onChange={(e) => setGotoVal(e.target.value)}
+              placeholder="00"
+              aria-label="Go to page number"
+              className="h-8 w-12 rounded-[8px] text-center text-[13px] outline-none focus:ring-2 focus:ring-[#335cff]/20"
+              style={{ ...INTER, border: "1px solid #e1e4ea", color: "#0e121b" }}
+            />
+            <button
+              type="submit"
+              aria-label="Go"
+              className="flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors hover:bg-[#f8f8f8]"
+              style={{ border: "1px solid #e1e4ea", color: "#525866" }}
+            >
+              <ChevronRight size={15} />
+            </button>
+          </form>
         </div>
       )}
     </div>
   );
 }
 
-/* ── Pagination button (shadcn-like) ── */
-function PageBtn({
-  children, onClick, disabled, active, ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+/* ── Plain chevron nav button (borderless) ── */
+function ChevBtn({ children, onClick, disabled, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2.5 text-[13px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+      className="flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors hover:bg-[#f8f8f8] disabled:opacity-40 disabled:pointer-events-none"
+      style={{ color: "#525866" }}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── Numbered page button (bordered box; active = blue) ── */
+function NumBtn({ children, onClick, active, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2 text-[13px] font-medium transition-colors"
       style={{
         fontFamily: "Inter, system-ui, -apple-system, sans-serif",
         letterSpacing: "-0.2px",
-        border: active ? "1px solid #e1e4ea" : "1px solid transparent",
-        background: active ? "#f8f8f8" : "transparent",
-        color: active ? "#0e121b" : "#525866",
+        border: active ? "1px solid #335cff" : "1px solid #e1e4ea",
+        background: active ? "#335cff" : "#fff",
+        color: active ? "#fff" : "#0e121b",
       }}
-      onMouseEnter={(e) => { if (!active && !disabled) e.currentTarget.style.background = "#f8f8f8"; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#f8f8f8"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "#fff"; }}
       {...rest}
     >
       {children}

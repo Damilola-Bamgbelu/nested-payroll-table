@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, getSortedRowModel, getExpandedRowModel,
   type ColumnDef, type SortingState, type ExpandedState, flexRender, type Row,
 } from "@tanstack/react-table";
-import { ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Country, Branch, Team, Employee, PayStatus } from "./types";
 import { StatusBadge } from "./status-badge";
 import { Checkbox } from "./checkbox";
@@ -174,6 +174,21 @@ export interface PayrollTableProps {
   labels?: Partial<Record<"group" | "amount" | "employees" | "period" | "status" | "processed", string>>;
   /** Called when a row's action (⋯) menu is clicked. */
   onRowAction?: (kind: TRow["kind"], id: string) => void;
+  /** Top-level groups per page. Set to 0 to disable pagination. Default 6. */
+  pageSize?: number;
+}
+
+/* ── Page-number list with ellipsis ── */
+function pageList(current: number, count: number): (number | "…")[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i);
+  const out: (number | "…")[] = [0];
+  const start = Math.max(1, current - 1);
+  const end = Math.min(count - 2, current + 1);
+  if (start > 1) out.push("…");
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < count - 2) out.push("…");
+  out.push(count - 1);
+  return out;
 }
 
 export function PayrollTable({
@@ -183,13 +198,30 @@ export function PayrollTable({
   avatarUrl = defaultAvatar,
   labels,
   onRowAction,
+  pageSize = 6,
 }: PayrollTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(0);
 
   const allRows = useMemo(() => build(countries), [countries]);
-  const rows = useMemo(() => filterRows(allRows, search), [allRows, search]);
+  const filtered = useMemo(() => filterRows(allRows, search), [allRows, search]);
+
+  /* Pagination over the top-level groups */
+  const paginate = pageSize > 0;
+  const pageCount = paginate ? Math.max(1, Math.ceil(filtered.length / pageSize)) : 1;
+  const safePage = Math.min(page, pageCount - 1);
+  const rows = useMemo(
+    () => (paginate ? filtered.slice(safePage * pageSize, safePage * pageSize + pageSize) : filtered),
+    [filtered, paginate, safePage, pageSize],
+  );
+
+  /* When the page changes, collapse rows so expansion ids don't carry across pages */
+  const goToPage = (p: number) => { setExpanded({}); setPage(Math.max(0, Math.min(p, pageCount - 1))); };
+  /* Reset to first page when the search query changes */
+  const searchRef = React.useRef(search);
+  if (searchRef.current !== search) { searchRef.current = search; if (page !== 0) { setPage(0); } }
 
   const L = {
     group: "Group", amount: "Amount", employees: "Employees",
@@ -337,6 +369,57 @@ export function PayrollTable({
           )}
         </tbody>
       </table>
+
+      {/* ── Pagination (shadcn-styled, dependency-free) ── */}
+      {paginate && filtered.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-3" style={{ ...INTER, borderTop: "1px solid #f2f4f7" }}>
+          <span className="text-[13px]" style={{ color: "#98a2b3" }}>
+            {safePage * pageSize + 1}–{Math.min(filtered.length, (safePage + 1) * pageSize)} of {filtered.length}
+          </span>
+          <nav className="flex items-center gap-1" aria-label="pagination">
+            <PageBtn disabled={safePage === 0} onClick={() => goToPage(safePage - 1)} aria-label="Previous page">
+              <ChevronLeft size={15} />
+            </PageBtn>
+            {pageList(safePage, pageCount).map((p, i) =>
+              p === "…" ? (
+                <span key={`e${i}`} className="px-1 text-[13px]" style={{ color: "#cacfd8" }}>…</span>
+              ) : (
+                <PageBtn key={p} active={p === safePage} onClick={() => goToPage(p)} aria-current={p === safePage ? "page" : undefined}>
+                  {p + 1}
+                </PageBtn>
+              ),
+            )}
+            <PageBtn disabled={safePage >= pageCount - 1} onClick={() => goToPage(safePage + 1)} aria-label="Next page">
+              <ChevronRight size={15} />
+            </PageBtn>
+          </nav>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── Pagination button (shadcn-like) ── */
+function PageBtn({
+  children, onClick, disabled, active, ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2.5 text-[13px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+      style={{
+        fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+        letterSpacing: "-0.2px",
+        border: active ? "1px solid #e1e4ea" : "1px solid transparent",
+        background: active ? "#f8f8f8" : "transparent",
+        color: active ? "#0e121b" : "#525866",
+      }}
+      onMouseEnter={(e) => { if (!active && !disabled) e.currentTarget.style.background = "#f8f8f8"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+      {...rest}
+    >
+      {children}
+    </button>
   );
 }
